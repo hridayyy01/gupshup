@@ -16,25 +16,31 @@ public class SimpleClient {
              BufferedReader serverIn = new BufferedReader(
                      new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
              PrintWriter serverOut = new PrintWriter(socket.getOutputStream(), true, StandardCharsets.UTF_8)) {
+            Thread reader = new Thread(() -> readIncoming(serverIn), "server-reader");
+            reader.setDaemon(true);
+            reader.start();
+
             BufferedReader keyboard = new BufferedReader(
                     new InputStreamReader(System.in, StandardCharsets.UTF_8));
-            chat(keyboard, serverIn, serverOut);
+            sendOutgoing(keyboard, serverOut);
         }
     }
 
-    private static void chat(BufferedReader keyboard, BufferedReader serverIn, PrintWriter serverOut)
-            throws IOException {
+    private static void readIncoming(BufferedReader serverIn) {
+        try {
+            String line;
+            while ((line = serverIn.readLine()) != null) {
+                System.out.println(line);
+            }
+        } catch (IOException ignored) {
+            // Main thread closed the socket on exit.
+        }
+    }
+
+    private static void sendOutgoing(BufferedReader keyboard, PrintWriter serverOut) throws IOException {
         String line;
-        while ((line = keyboard.readLine()) != null) {
+        while ((line = keyboard.readLine()) != null && !"exit".equals(line)) {
             serverOut.println(line);
-            String reply = serverIn.readLine();
-            if (reply == null) {
-                break;
-            }
-            System.out.println(reply);
-            if ("exit".equals(line)) {
-                break;
-            }
         }
     }
 }
