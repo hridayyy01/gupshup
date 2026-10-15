@@ -8,6 +8,11 @@ public final class Protocol {
     public static final String MSG = "MSG";
     public static final String QUIT = "QUIT";
     public static final String ERROR = "ERROR";
+    public static final String PM = "PM";
+    public static final String SENT = "SENT";
+    public static final String ONLINE = "ONLINE";
+    public static final String JOIN = "JOIN";
+    public static final String LEAVE = "LEAVE";
 
     private Protocol() {
     }
@@ -30,6 +35,30 @@ public final class Protocol {
 
     public static String chatMessage(String sender, String text, String timestamp) {
         return build(MSG, sender, text, timestamp);
+    }
+
+    public static String privateMessage(String from, String text) {
+        return build(PM, from, text);
+    }
+
+    public static String privateMessageSent(String to, String text) {
+        return build(SENT, to, text);
+    }
+
+    public static String onlineRequest() {
+        return build(ONLINE);
+    }
+
+    public static String online(List<String> names) {
+        return build(ONLINE, names.toArray(String[]::new));
+    }
+
+    public static String join(String name) {
+        return build(JOIN, name);
+    }
+
+    public static String leave(String name) {
+        return build(LEAVE, name);
     }
 
     public static String build(String command, String... arguments) {

@@ -8,12 +8,12 @@ public class EchoServer {
     private static final int PORT = 5000;
 
     public static void main(String[] args) throws IOException {
-        ClientRegistry registry = new ClientRegistry();
+        CommandProcessor commands = new CommandProcessor(new ClientRegistry());
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             System.out.println("Listening on port " + PORT);
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                new Thread(new ClientHandler(clientSocket, registry)).start();
+                new Thread(new ClientHandler(clientSocket, commands)).start();
             }
         }
     }
