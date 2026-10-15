@@ -7,6 +7,8 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
+import com.minichat.common.Protocol;
+
 public class ClientHandler implements Runnable {
     private final Socket socket;
     private final ClientRegistry registry;
@@ -22,17 +24,60 @@ public class ClientHandler implements Runnable {
 
     @Override
     public void run() {
-        registry.add(this);
+        String name = null;
         try {
-            String line;
-            while ((line = in.readLine()) != null) {
-                registry.broadcast(line, this);
+            name = login();
+            if (name == null) {
+                return;
             }
+            chat(name);
         } catch (IOException ignored) {
             // Client closed the connection while we were blocked in readLine.
         } finally {
-            registry.remove(this);
+            if (name != null) {
+                registry.remove(name);
+            }
             close();
+        }
+    }
+
+    private String login() throws IOException {
+        String line = in.readLine();
+        if (line == null) {
+            return null;
+        }
+        Protocol.Message message = Protocol.parse(line);
+        if (!Protocol.LOGIN.equals(message.command())) {
+            send(Protocol.error("first command must be LOGIN"));
+            return null;
+        }
+        String name = message.argument(0).trim();
+        if (name.isEmpty()) {
+            send(Protocol.error("username is empty"));
+            return null;
+        }
+        if (!registry.add(name, this)) {
+            send(Protocol.error("username is taken"));
+            return null;
+        }
+        return name;
+    }
+
+    private void chat(String name) throws IOException {
+        String line;
+        while ((line = in.readLine()) != null) {
+            Protocol.Message message = Protocol.parse(line);
+            if (Protocol.QUIT.equals(message.command())) {
+                return;
+            }
+            if (Protocol.MSG.equals(message.command())) {
+                String text = message.argument(0);
+                if (!text.isEmpty()) {
+                    registry.broadcast(name, text);
+                }
+                continue;
+            }
+            send(Protocol.error("unknown command"));
         }
     }
 
