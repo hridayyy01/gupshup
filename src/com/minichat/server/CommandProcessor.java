@@ -30,6 +30,10 @@ public final class CommandProcessor {
         registry.remove(name);
     }
 
+    public void closed(ClientHandler client) {
+        registry.untrack(client);
+    }
+
     public boolean handle(ClientHandler client, String name, Protocol.Message message) {
         return switch (message.command()) {
             case Protocol.QUIT -> false;

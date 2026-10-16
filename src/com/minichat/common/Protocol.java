@@ -13,6 +13,7 @@ public final class Protocol {
     public static final String ONLINE = "ONLINE";
     public static final String JOIN = "JOIN";
     public static final String LEAVE = "LEAVE";
+    public static final String SERVER = "SERVER";
 
     private Protocol() {
     }
@@ -59,6 +60,10 @@ public final class Protocol {
 
     public static String leave(String name) {
         return build(LEAVE, name);
+    }
+
+    public static String server(String status) {
+        return build(SERVER, status);
     }
 
     public static String build(String command, String... arguments) {

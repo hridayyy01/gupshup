@@ -72,6 +72,7 @@ public class SimpleClient {
             case Protocol.ONLINE -> System.out.println("online: " + onlineNames(message));
             case Protocol.JOIN -> System.out.println("* " + message.argument(0) + " joined");
             case Protocol.LEAVE -> System.out.println("* " + message.argument(0) + " left");
+            case Protocol.SERVER -> System.out.println("server: " + message.argument(0));
             default -> {
             }
         }

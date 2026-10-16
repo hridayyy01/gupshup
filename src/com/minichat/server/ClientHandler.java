@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 
 import com.minichat.common.Protocol;
@@ -18,15 +19,20 @@ public class ClientHandler implements Runnable {
     public ClientHandler(Socket socket, CommandProcessor commands) throws IOException {
         this.socket = socket;
         this.commands = commands;
-        this.in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-        this.out = new PrintWriter(socket.getOutputStream(), true, StandardCharsets.UTF_8);
+        try {
+            this.in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            this.out = new PrintWriter(socket.getOutputStream(), true, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            disconnect();
+            throw e;
+        }
     }
 
     @Override
     public void run() {
         String name = null;
         try {
-            String line = in.readLine();
+            String line = readLine();
             if (line == null) {
                 return;
             }
@@ -34,18 +40,29 @@ public class ClientHandler implements Runnable {
             if (name == null) {
                 return;
             }
-            while ((line = in.readLine()) != null) {
+            while ((line = readLine()) != null) {
                 if (!commands.handle(this, name, Protocol.parse(line))) {
                     return;
                 }
             }
         } catch (IOException ignored) {
-            // Client closed the connection while we were blocked in readLine.
+            // A real socket failure, or this socket was closed during shutdown.
         } finally {
             if (name != null) {
                 commands.leave(name);
             }
-            close();
+            commands.closed(this);
+            disconnect();
+        }
+    }
+
+    private String readLine() throws IOException {
+        while (true) {
+            try {
+                return in.readLine();
+            } catch (SocketTimeoutException ignored) {
+                // No complete line arrived before the deadline. The connection stays open.
+            }
         }
     }
 
@@ -56,7 +73,7 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private void close() {
+    public void disconnect() {
         try {
             socket.close();
         } catch (IOException ignored) {
