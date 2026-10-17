@@ -14,6 +14,9 @@ public final class Protocol {
     public static final String JOIN = "JOIN";
     public static final String LEAVE = "LEAVE";
     public static final String SERVER = "SERVER";
+    public static final String PING = "PING";
+    public static final String PONG = "PONG";
+    public static final int MAX_TEXT_LENGTH = 1000;
 
     private Protocol() {
     }
@@ -64,6 +67,14 @@ public final class Protocol {
 
     public static String server(String status) {
         return build(SERVER, status);
+    }
+
+    public static String ping() {
+        return build(PING);
+    }
+
+    public static String pong() {
+        return build(PONG);
     }
 
     public static String build(String command, String... arguments) {

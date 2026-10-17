@@ -27,7 +27,8 @@ public class EchoServer {
     private final int readTimeoutMillis;
     private final AtomicBoolean stopped = new AtomicBoolean();
 
-    public EchoServer(ServerSocket serverSocket, ExecutorService pool, int readTimeoutMillis) {
+    public EchoServer(ServerSocket serverSocket, ExecutorService pool, int readTimeoutMillis) throws IOException {
+        ServerLog.start();
         this.serverSocket = serverSocket;
         this.pool = pool;
         this.readTimeoutMillis = readTimeoutMillis;
@@ -37,6 +38,7 @@ public class EchoServer {
     }
 
     public static void main(String[] args) throws IOException {
+        ServerLog.start();
         int port = argument(args, 0, DEFAULT_PORT, "port");
         int poolSize = argument(args, 1, DEFAULT_POOL_SIZE, "pool size");
         int readTimeoutMillis = argument(args, 2, DEFAULT_READ_TIMEOUT_MILLIS, "read timeout");
@@ -45,7 +47,7 @@ public class EchoServer {
                 fixedPool(poolSize),
                 readTimeoutMillis);
         Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown, "server-shutdown"));
-        System.out.println("Listening on port " + port + ", pool " + poolSize);
+        ServerLog.LOG.info("Listening on port " + port + ", pool " + poolSize);
         server.serve();
     }
 
@@ -76,7 +78,7 @@ public class EchoServer {
             }
         } catch (IOException e) {
             if (!stopped.get()) {
-                e.printStackTrace();
+                ServerLog.LOG.warning("accept failed: " + e.getMessage());
             }
         }
     }
@@ -85,6 +87,7 @@ public class EchoServer {
         if (!stopped.compareAndSet(false, true)) {
             return;
         }
+        ServerLog.LOG.info("shutting down");
         close(serverSocket);
         registry.disconnectAll(Protocol.server("shutting down"));
         pool.shutdown();
@@ -103,10 +106,12 @@ public class EchoServer {
         try {
             socket.setKeepAlive(true);
             socket.setSoTimeout(readTimeoutMillis);
+            ServerLog.LOG.info("accepted " + socket.getRemoteSocketAddress());
             handler = new ClientHandler(socket, commands);
             registry.track(handler);
             pool.execute(handler);
         } catch (RejectedExecutionException full) {
+            ServerLog.LOG.warning("server full, rejecting " + socket.getRemoteSocketAddress());
             registry.untrack(handler);
             handler.send(Protocol.error("server full"));
             handler.disconnect();
@@ -138,7 +143,7 @@ public class EchoServer {
             }
             return value;
         } catch (NumberFormatException e) {
-            System.err.println(label + " must be a positive integer");
+            ServerLog.LOG.severe(label + " must be a positive integer");
             System.exit(1);
             return fallback;
         }

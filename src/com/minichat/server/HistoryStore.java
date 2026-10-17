@@ -55,7 +55,7 @@ public final class HistoryStore {
             int from = Math.max(0, lines.size() - RECENT_LIMIT);
             return List.copyOf(lines.subList(from, lines.size()));
         } catch (IOException e) {
-            System.err.println("could not read " + historyFile + ": " + e.getMessage());
+            ServerLog.LOG.warning("could not read " + historyFile + ": " + e.getMessage());
             return List.of();
         } finally {
             writeLock.unlock();
@@ -74,7 +74,7 @@ public final class HistoryStore {
                     StandardOpenOption.WRITE,
                     StandardOpenOption.APPEND);
         } catch (IOException e) {
-            System.err.println("could not append " + file + ": " + e.getMessage());
+            ServerLog.LOG.warning("could not append " + file + ": " + e.getMessage());
         } finally {
             writeLock.unlock();
         }

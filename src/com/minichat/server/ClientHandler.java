@@ -45,8 +45,10 @@ public class ClientHandler implements Runnable {
                     return;
                 }
             }
+        } catch (SocketTimeoutException timedOut) {
+            ServerLog.LOG.info("closing silent client " + socket.getRemoteSocketAddress());
         } catch (IOException ignored) {
-            // A real socket failure, or this socket was closed during shutdown.
+            // The peer closed the socket, or shutdown closed it.
         } finally {
             if (name != null) {
                 commands.leave(name);
@@ -57,13 +59,7 @@ public class ClientHandler implements Runnable {
     }
 
     private String readLine() throws IOException {
-        while (true) {
-            try {
-                return in.readLine();
-            } catch (SocketTimeoutException ignored) {
-                // No complete line arrived before the deadline. The connection stays open.
-            }
-        }
+        return in.readLine();
     }
 
     public void send(String message) {

@@ -28,10 +28,12 @@ public class ClientRegistry {
         sendAll(Protocol.join(name));
     }
 
-    public void remove(String name) {
-        if (clients.remove(name) != null) {
-            sendAll(Protocol.leave(name));
+    public boolean remove(String name) {
+        if (clients.remove(name) == null) {
+            return false;
         }
+        sendAll(Protocol.leave(name));
+        return true;
     }
 
     public ClientHandler find(String name) {
