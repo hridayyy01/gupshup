@@ -14,13 +14,18 @@ public class ClientRegistry {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
     private final ConcurrentHashMap<String, ClientHandler> clients = new ConcurrentHashMap<>();
     private final Set<ClientHandler> connections = ConcurrentHashMap.newKeySet();
+    private final HistoryStore history;
+
+    public ClientRegistry(HistoryStore history) {
+        this.history = history;
+    }
 
     public boolean add(String name, ClientHandler client) {
-        if (clients.putIfAbsent(name, client) != null) {
-            return false;
-        }
+        return clients.putIfAbsent(name, client) == null;
+    }
+
+    public void announceJoin(String name) {
         sendAll(Protocol.join(name));
-        return true;
     }
 
     public void remove(String name) {
@@ -40,7 +45,9 @@ public class ClientRegistry {
     }
 
     public void broadcast(String sender, String text) {
-        sendAll(Protocol.chatMessage(sender, text, LocalTime.now().format(TIME)));
+        String line = Protocol.chatMessage(sender, text, LocalTime.now().format(TIME));
+        history.appendPublic(line);
+        sendAll(line);
     }
 
     public void track(ClientHandler client) {

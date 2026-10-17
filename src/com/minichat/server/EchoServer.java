@@ -3,6 +3,7 @@ package com.minichat.server;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.SynchronousQueue;
@@ -30,8 +31,9 @@ public class EchoServer {
         this.serverSocket = serverSocket;
         this.pool = pool;
         this.readTimeoutMillis = readTimeoutMillis;
-        this.registry = new ClientRegistry();
-        this.commands = new CommandProcessor(registry);
+        HistoryStore history = new HistoryStore(Path.of("data"));
+        this.registry = new ClientRegistry(history);
+        this.commands = new CommandProcessor(registry, history);
     }
 
     public static void main(String[] args) throws IOException {

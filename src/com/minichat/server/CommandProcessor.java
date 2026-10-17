@@ -4,9 +4,11 @@ import com.minichat.common.Protocol;
 
 public final class CommandProcessor {
     private final ClientRegistry registry;
+    private final HistoryStore history;
 
-    public CommandProcessor(ClientRegistry registry) {
+    public CommandProcessor(ClientRegistry registry, HistoryStore history) {
         this.registry = registry;
+        this.history = history;
     }
 
     public String login(ClientHandler client, Protocol.Message message) {
@@ -23,6 +25,10 @@ public final class CommandProcessor {
             client.send(Protocol.error("username is taken"));
             return null;
         }
+        for (String line : history.recentPublic()) {
+            client.send(line);
+        }
+        registry.announceJoin(name);
         return name;
     }
 
@@ -79,6 +85,7 @@ public final class CommandProcessor {
             sender.send(Protocol.error("no such user: " + target));
             return;
         }
+        history.appendPrivate(from, target, text);
         recipient.send(Protocol.privateMessage(from, text));
         sender.send(Protocol.privateMessageSent(target, text));
     }
