@@ -6,9 +6,12 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -31,6 +34,7 @@ public class LoginFrame extends JFrame {
     private final JLabel statusLabel = new JLabel(" ");
     private final JButton connectButton = new JButton("Connect");
     private ChatConnection connection;
+    private LoginWait loginWait;
     private boolean handedOff;
 
     public LoginFrame() {
@@ -126,14 +130,14 @@ public class LoginFrame extends JFrame {
         int port = Integer.parseInt(portText);
         setFormEnabled(false);
         showStatus("Connecting...");
-        LoginWait wait = new LoginWait(username);
-        connection = new ChatConnection(wait);
-        wait.bind(connection);
+        loginWait = new LoginWait(username);
+        connection = new ChatConnection(loginWait);
+        loginWait.bind(connection);
         new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() {
                 connection.connect(host, port, username);
-                return wait.await();
+                return loginWait.await();
             }
 
             @Override
@@ -160,6 +164,8 @@ public class LoginFrame extends JFrame {
     private void openChat(String username) {
         handedOff = true;
         ChatFrame chat = new ChatFrame(connection, username);
+        loginWait.handoff(chat);
+        connection.requestOnlineList();
         chat.setVisible(true);
         dispose();
     }
@@ -207,7 +213,11 @@ public class LoginFrame extends JFrame {
         private final String username;
         private final CountDownLatch done = new CountDownLatch(1);
         private final AtomicReference<String> failure = new AtomicReference<>();
+        private final AtomicBoolean succeeded = new AtomicBoolean();
+        private final List<Consumer<ChatListener>> pending = new ArrayList<>();
         private ChatConnection connection;
+        private ChatListener target;
+        private boolean live;
 
         private LoginWait(String username) {
             this.username = username;
@@ -228,8 +238,39 @@ public class LoginFrame extends JFrame {
             return failure.get();
         }
 
+        private void handoff(ChatListener next) {
+            List<Consumer<ChatListener>> copy;
+            synchronized (pending) {
+                target = next;
+                live = true;
+                copy = new ArrayList<>(pending);
+                pending.clear();
+            }
+            for (Consumer<ChatListener> event : copy) {
+                event.accept(next);
+            }
+        }
+
+        private void deliver(Consumer<ChatListener> event) {
+            ChatListener current;
+            synchronized (pending) {
+                if (!live) {
+                    pending.add(event);
+                    return;
+                }
+                current = target;
+            }
+            event.accept(current);
+        }
+
+        private void succeed() {
+            if (succeeded.compareAndSet(false, true)) {
+                done.countDown();
+            }
+        }
+
         private void stop(String message) {
-            if (!failure.compareAndSet(null, message)) {
+            if (succeeded.get() || !failure.compareAndSet(null, message)) {
                 return;
             }
             if (connection != null) {
@@ -240,43 +281,64 @@ public class LoginFrame extends JFrame {
 
         @Override
         public void onConnected() {
+            if (succeeded.get()) {
+                deliver(ChatListener::onConnected);
+            }
         }
 
         @Override
         public void onDisconnected() {
+            if (succeeded.get()) {
+                deliver(ChatListener::onDisconnected);
+                return;
+            }
             stop("connection closed");
         }
 
         @Override
         public void onReconnecting(int attempt) {
+            if (succeeded.get()) {
+                deliver(listener -> listener.onReconnecting(attempt));
+                return;
+            }
             stop("could not connect");
         }
 
         @Override
         public void onMessage(String sender, String text, String time) {
+            deliver(listener -> listener.onMessage(sender, text, time));
         }
 
         @Override
         public void onPrivateMessage(String from, String text, String time) {
+            deliver(listener -> listener.onPrivateMessage(from, text, time));
         }
 
         @Override
         public void onUserJoined(String name) {
-            if (username.equals(name) && failure.compareAndSet(null, null)) {
-                done.countDown();
+            deliver(listener -> listener.onUserJoined(name));
+            if (username.equals(name)) {
+                succeed();
             }
         }
 
         @Override
         public void onUserLeft(String name) {
+            deliver(listener -> listener.onUserLeft(name));
         }
 
         @Override
         public void onOnlineList(List<String> names) {
+            List<String> copy = List.copyOf(names);
+            deliver(listener -> listener.onOnlineList(copy));
         }
 
         @Override
         public void onError(String message) {
+            if (succeeded.get()) {
+                deliver(listener -> listener.onError(message));
+                return;
+            }
             stop(message);
         }
     }
