@@ -13,6 +13,8 @@ public interface ChatListener {
 
     void onPrivateMessage(String from, String text, String time);
 
+    void onPrivateSent(String to, String text, String time);
+
     void onUserJoined(String name);
 
     void onUserLeft(String name);

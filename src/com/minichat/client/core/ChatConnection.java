@@ -128,7 +128,7 @@ public final class ChatConnection {
             case Protocol.MSG -> listener.onMessage(message.argument(0), message.argument(1), message.argument(2));
             case Protocol.PM -> listener.onPrivateMessage(
                     message.argument(0), message.argument(1), message.argument(2));
-            case Protocol.SENT -> listener.onPrivateMessage(
+            case Protocol.SENT -> listener.onPrivateSent(
                     message.argument(0), message.argument(1), message.argument(2));
             case Protocol.ONLINE -> listener.onOnlineList(message.arguments());
             case Protocol.JOIN -> listener.onUserJoined(message.argument(0));

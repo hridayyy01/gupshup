@@ -165,7 +165,9 @@ public class LoginFrame extends JFrame {
         handedOff = true;
         ChatFrame chat = new ChatFrame(connection, username);
         loginWait.handoff(chat);
-        connection.requestOnlineList();
+        Thread list = new Thread(connection::requestOnlineList, "online-list");
+        list.setDaemon(true);
+        list.start();
         chat.setVisible(true);
         dispose();
     }
@@ -312,6 +314,11 @@ public class LoginFrame extends JFrame {
         @Override
         public void onPrivateMessage(String from, String text, String time) {
             deliver(listener -> listener.onPrivateMessage(from, text, time));
+        }
+
+        @Override
+        public void onPrivateSent(String to, String text, String time) {
+            deliver(listener -> listener.onPrivateSent(to, text, time));
         }
 
         @Override

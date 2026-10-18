@@ -3,12 +3,19 @@ package com.minichat.client.ui;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -18,23 +25,14 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JTextField;
-import javax.swing.JTextPane;
+import javax.swing.JTabbedPane;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
-import javax.swing.text.BadLocationException;
-import javax.swing.text.SimpleAttributeSet;
-import javax.swing.text.StyleConstants;
-import javax.swing.text.StyledDocument;
 
 import com.minichat.client.core.ChatConnection;
 import com.minichat.client.core.ChatListener;
 
 public class ChatFrame extends JFrame implements ChatListener {
-    private static final Color MINE = new Color(0x1565C0);
-    private static final Color THEIRS = new Color(0x212121);
-    private static final Color SYSTEM = new Color(0x757575);
-    private static final Color PRIVATE = new Color(0x6A1B9A);
     private static final Color ERROR = new Color(0xB00020);
     private static final Color CONNECTED = new Color(0x2E7D32);
     private static final Color RECONNECTING = new Color(0xEF6C00);
@@ -45,12 +43,14 @@ public class ChatFrame extends JFrame implements ChatListener {
     private final DefaultListModel<String> onlineModel = new DefaultListModel<>();
     private final JList<String> onlineList = new JList<>(onlineModel);
     private final JLabel onlineHeader = new JLabel("Online (0)");
-    private final JTextPane transcript = new JTextPane();
-    private final JTextField input = new JTextField();
-    private final JButton sendButton = new JButton("Send");
+    private final JTabbedPane tabs = new JTabbedPane();
+    private final ChatPanel group = new ChatPanel(this::sendGroup);
+    private final Map<String, ChatPanel> privateTabs = new HashMap<>();
+    private final Map<ChatPanel, TabTitle> titles = new HashMap<>();
     private final JLabel statusText = new JLabel("Connected");
     private final JLabel banner = new JLabel("Connection lost. Reconnecting...");
     private final StatusDot statusDot = new StatusDot(CONNECTED);
+    private boolean connected = true;
 
     public ChatFrame(ChatConnection connection, String username) {
         super("Pigeon — " + username);
@@ -73,8 +73,7 @@ public class ChatFrame extends JFrame implements ChatListener {
         JPanel root = new JPanel(new BorderLayout());
         root.add(buildStatus(), BorderLayout.NORTH);
         root.add(buildOnline(), BorderLayout.WEST);
-        root.add(buildTranscript(), BorderLayout.CENTER);
-        root.add(buildInput(), BorderLayout.SOUTH);
+        root.add(buildTabs(), BorderLayout.CENTER);
         return root;
     }
 
@@ -102,37 +101,111 @@ public class ChatFrame extends JFrame implements ChatListener {
         onlineHeader.setBorder(BorderFactory.createEmptyBorder(0, 2, 0, 0));
         west.add(onlineHeader, BorderLayout.NORTH);
         onlineList.setFixedCellHeight(22);
+        onlineList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent event) {
+                if (event.getClickCount() == 2) {
+                    openSelectedUser();
+                }
+            }
+        });
         west.add(new JScrollPane(onlineList), BorderLayout.CENTER);
         return west;
     }
 
-    private JScrollPane buildTranscript() {
-        transcript.setEditable(false);
-        transcript.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        return new JScrollPane(transcript);
+    private JTabbedPane buildTabs() {
+        tabs.addTab("Group", group);
+        titles.put(group, installTitle(group, "Group", false));
+        tabs.addChangeListener(event -> clearUnread(selectedPanel()));
+        return tabs;
     }
 
-    private JPanel buildInput() {
-        JPanel south = new JPanel(new BorderLayout(8, 0));
-        south.setBorder(BorderFactory.createEmptyBorder(8, 12, 12, 12));
-        input.addActionListener(event -> send());
-        sendButton.addActionListener(event -> send());
-        south.add(input, BorderLayout.CENTER);
-        south.add(sendButton, BorderLayout.EAST);
-        return south;
+    private void sendGroup(String text) {
+        sendAsync(() -> connection.sendMessage(text));
     }
 
-    private void send() {
-        String text = input.getText().trim();
-        if (text.isEmpty()) {
+    private void sendAsync(Runnable send) {
+        Thread thread = new Thread(send, "chat-send");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void openSelectedUser() {
+        String name = onlineList.getSelectedValue();
+        if (name == null || name.equals(username)) {
             return;
         }
-        input.setText("");
-        connection.sendMessage(text);
+        openPrivate(name, true);
+    }
+
+    private ChatPanel openPrivate(String name, boolean focus) {
+        ChatPanel existing = privateTabs.get(name);
+        if (existing != null) {
+            if (focus) {
+                tabs.setSelectedComponent(existing);
+                existing.focusInput();
+            }
+            return existing;
+        }
+        ChatPanel panel = new ChatPanel(text -> sendAsync(() -> connection.sendPrivate(name, text)));
+        panel.setConnected(connected);
+        panel.setPeerOnline(onlineModel.contains(name));
+        privateTabs.put(name, panel);
+        int selected = tabs.getSelectedIndex();
+        tabs.insertTab(name, null, panel, null, tabs.getTabCount());
+        titles.put(panel, installTitle(panel, name, true));
+        if (focus) {
+            tabs.setSelectedComponent(panel);
+            panel.focusInput();
+        } else if (selected >= 0) {
+            tabs.setSelectedIndex(selected);
+        }
+        return panel;
+    }
+
+    private TabTitle installTitle(ChatPanel panel, String name, boolean closable) {
+        TabTitle title = new TabTitle(name, closable, () -> closePrivate(name, panel));
+        int index = tabs.indexOfComponent(panel);
+        tabs.setTabComponentAt(index, title);
+        return title;
+    }
+
+    private void closePrivate(String name, ChatPanel panel) {
+        int index = tabs.indexOfComponent(panel);
+        if (index > 0) {
+            tabs.remove(index);
+        }
+        privateTabs.remove(name);
+        titles.remove(panel);
+    }
+
+    private void note(ChatPanel panel) {
+        if (panel == selectedPanel()) {
+            return;
+        }
+        TabTitle title = titles.get(panel);
+        if (title != null) {
+            title.addUnread();
+        }
+    }
+
+    private void clearUnread(ChatPanel panel) {
+        if (panel == null) {
+            return;
+        }
+        TabTitle title = titles.get(panel);
+        if (title != null) {
+            title.clearUnread();
+        }
+    }
+
+    private ChatPanel selectedPanel() {
+        return tabs.getSelectedComponent() instanceof ChatPanel panel ? panel : group;
     }
 
     @Override
     public void onConnected() {
+        connection.requestOnlineList();
         onEdt(() -> setConnected(true));
     }
 
@@ -158,19 +231,44 @@ public class ChatFrame extends JFrame implements ChatListener {
 
     @Override
     public void onMessage(String sender, String text, String time) {
-        onEdt(() -> appendMessage(sender, text, time, username.equals(sender)));
+        onEdt(() -> {
+            group.appendMessage(sender, text, time, username.equals(sender));
+            note(group);
+        });
     }
 
     @Override
     public void onPrivateMessage(String from, String text, String time) {
-        onEdt(() -> appendPrivate(from, text, time));
+        onEdt(() -> {
+            ChatPanel panel = openPrivate(from, false);
+            panel.appendMessage(from, text, time, false);
+            note(panel);
+        });
+    }
+
+    @Override
+    public void onPrivateSent(String to, String text, String time) {
+        onEdt(() -> {
+            ChatPanel panel = privateTabs.get(to);
+            if (panel == null) {
+                panel = openPrivate(to, false);
+            }
+            panel.appendMessage(username, text, time, true);
+            note(panel);
+        });
     }
 
     @Override
     public void onUserJoined(String name) {
         onEdt(() -> {
             addOnline(name);
-            appendSystem("* " + name + " joined");
+            group.appendSystem("* " + name + " joined");
+            note(group);
+            ChatPanel panel = privateTabs.get(name);
+            if (panel != null) {
+                panel.appendSystem(name + " is online");
+                panel.setPeerOnline(true);
+            }
         });
     }
 
@@ -179,7 +277,13 @@ public class ChatFrame extends JFrame implements ChatListener {
         onEdt(() -> {
             onlineModel.removeElement(name);
             refreshOnlineHeader();
-            appendSystem("* " + name + " left");
+            group.appendSystem("* " + name + " left");
+            note(group);
+            ChatPanel panel = privateTabs.get(name);
+            if (panel != null) {
+                panel.appendSystem(name + " is offline");
+                panel.setPeerOnline(false);
+            }
         });
     }
 
@@ -192,22 +296,28 @@ public class ChatFrame extends JFrame implements ChatListener {
                 onlineModel.addElement(name);
             }
             refreshOnlineHeader();
+            for (Map.Entry<String, ChatPanel> entry : privateTabs.entrySet()) {
+                entry.getValue().setPeerOnline(onlineModel.contains(entry.getKey()));
+            }
         });
     }
 
     @Override
     public void onError(String message) {
-        onEdt(() -> appendError(message));
+        onEdt(() -> selectedPanel().appendError(message));
     }
 
     private void setConnected(boolean connected) {
-        input.setEnabled(connected);
-        sendButton.setEnabled(connected);
+        this.connected = connected;
+        group.setConnected(connected);
+        for (ChatPanel panel : privateTabs.values()) {
+            panel.setConnected(connected);
+        }
         banner.setVisible(!connected);
         if (connected) {
             statusText.setText("Connected");
             statusDot.setColor(CONNECTED);
-            input.requestFocusInWindow();
+            selectedPanel().focusInput();
         }
     }
 
@@ -222,58 +332,52 @@ public class ChatFrame extends JFrame implements ChatListener {
         onlineHeader.setText("Online (" + onlineModel.getSize() + ")");
     }
 
-    private void appendMessage(String sender, String text, String time, boolean mine) {
-        SimpleAttributeSet style = new SimpleAttributeSet();
-        StyleConstants.setForeground(style, mine ? MINE : THEIRS);
-        StyleConstants.setAlignment(style, mine ? StyleConstants.ALIGN_RIGHT : StyleConstants.ALIGN_LEFT);
-        append("[" + clock(time) + "] " + sender + ": " + text, style);
-    }
-
-    private void appendPrivate(String from, String text, String time) {
-        SimpleAttributeSet style = new SimpleAttributeSet();
-        StyleConstants.setForeground(style, PRIVATE);
-        StyleConstants.setItalic(style, true);
-        String prefix = clock(time).isEmpty() ? "" : "[" + clock(time) + "] ";
-        append(prefix + "(pm) " + from + ": " + text, style);
-    }
-
-    private void appendSystem(String text) {
-        SimpleAttributeSet style = new SimpleAttributeSet();
-        StyleConstants.setForeground(style, SYSTEM);
-        StyleConstants.setItalic(style, true);
-        append(text, style);
-    }
-
-    private void appendError(String text) {
-        SimpleAttributeSet style = new SimpleAttributeSet();
-        StyleConstants.setForeground(style, ERROR);
-        StyleConstants.setItalic(style, true);
-        append(text, style);
-    }
-
-    private void append(String text, SimpleAttributeSet style) {
-        StyledDocument document = transcript.getStyledDocument();
-        try {
-            int start = document.getLength();
-            document.insertString(start, text + "\n", style);
-            document.setParagraphAttributes(start, text.length() + 1, style, false);
-            transcript.setCaretPosition(document.getLength());
-        } catch (BadLocationException ignored) {
-        }
-    }
-
-    private static String clock(String time) {
-        if (time == null || time.isBlank()) {
-            return "";
-        }
-        return time.length() >= 5 ? time.substring(0, 5) : time;
-    }
-
     private void onEdt(Runnable action) {
         if (SwingUtilities.isEventDispatchThread()) {
             action.run();
         } else {
             SwingUtilities.invokeLater(action);
+        }
+    }
+
+    private static final class TabTitle extends JPanel {
+        private final JLabel label;
+        private final String name;
+        private final Font plain;
+        private final Font bold;
+        private int unread;
+
+        private TabTitle(String name, boolean closable, Runnable onClose) {
+            super(new FlowLayout(FlowLayout.LEADING, 4, 0));
+            this.name = name;
+            setOpaque(false);
+            label = new JLabel(name);
+            plain = label.getFont().deriveFont(Font.PLAIN);
+            bold = label.getFont().deriveFont(Font.BOLD);
+            label.setFont(plain);
+            add(label);
+            if (!closable) {
+                return;
+            }
+            JButton close = new JButton("x");
+            close.setMargin(new Insets(0, 2, 0, 2));
+            close.setBorder(BorderFactory.createEmptyBorder(0, 4, 0, 2));
+            close.setContentAreaFilled(false);
+            close.setFocusable(false);
+            close.addActionListener(event -> onClose.run());
+            add(close);
+        }
+
+        private void addUnread() {
+            unread++;
+            label.setText(name + " (" + unread + ")");
+            label.setFont(bold);
+        }
+
+        private void clearUnread() {
+            unread = 0;
+            label.setText(name);
+            label.setFont(plain);
         }
     }
 

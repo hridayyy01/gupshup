@@ -133,6 +133,11 @@ public class SimpleClient {
         }
 
         @Override
+        public void onPrivateSent(String to, String text, String time) {
+            System.out.println("(pm to " + to + ") " + text);
+        }
+
+        @Override
         public void onUserJoined(String name) {
             System.out.println("* " + name + " joined");
         }
